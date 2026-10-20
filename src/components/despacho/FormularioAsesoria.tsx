@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { SERVICIOS_D } from "@/lib/despacho";
+import { guardarLead } from "@/lib/local-store";
 
 type Resultado = { nombre: string; correo: "enviado" | "no_configurado" | "error" };
 
@@ -18,7 +19,6 @@ export default function FormularioAsesoria() {
   const [telefono, setTelefono] = useState("");
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
-  const [errorGlobal, setErrorGlobal] = useState("");
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const titulo = useRef<HTMLHeadingElement>(null);
 
@@ -40,7 +40,9 @@ export default function FormularioAsesoria() {
     setErrores(er);
     if (Object.keys(er).length) return;
     setEnviando(true);
-    setErrorGlobal("");
+    // 1) Guarda la solicitud en el panel (este navegador). 2) Pide al servidor enviar el aviso por correo.
+    guardarLead({ nombre, empresa, email, telefono: telefono.replace(/\D/g, ""), servicio, mensaje });
+    let correo: Resultado["correo"] = "error";
     try {
       const r = await fetch("/api/leads", {
         method: "POST",
@@ -48,13 +50,10 @@ export default function FormularioAsesoria() {
         body: JSON.stringify({ nombre, empresa, email, telefono, servicio, mensaje }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error ?? "Error");
-      setResultado({ nombre: nombre.split(" ")[0], correo: d.correo });
-    } catch {
-      setErrorGlobal("No pudimos enviar tu solicitud. Revisa tu conexión e inténtalo de nuevo.");
-    } finally {
-      setEnviando(false);
-    }
+      if (r.ok) correo = d.correo;
+    } catch {}
+    setResultado({ nombre: nombre.split(" ")[0], correo });
+    setEnviando(false);
   };
 
   if (resultado) {
@@ -63,7 +62,7 @@ export default function FormularioAsesoria() {
         <h2 ref={titulo} tabIndex={-1} className="font-despachoDisplay text-3xl font-semibold focus:outline-none">Recibimos tu solicitud, {resultado.nombre}.</h2>
         <p className="mt-3 text-d-slate">Un contador te escribirá el siguiente día hábil con una propuesta. Mientras tanto, esto es lo que ya pasó:</p>
         <ul className="mt-6 divide-y divide-d-rule border-y border-d-rule text-[15px]">
-          <li className="flex justify-between gap-4 py-3"><span>Solicitud guardada en el panel del despacho</span><span className="font-semibold text-[#2F6B3F]">Listo</span></li>
+          <li className="flex justify-between gap-4 py-3"><span>Solicitud guardada en el panel de este navegador</span><span className="font-semibold text-[#2F6B3F]">Listo</span></li>
           <li className="flex justify-between gap-4 py-3">
             <span>Aviso por correo al equipo</span>
             <span className={`font-semibold ${resultado.correo === "enviado" ? "text-[#2F6B3F]" : "text-[#8A5A00]"}`}>
@@ -129,7 +128,6 @@ export default function FormularioAsesoria() {
               {errores.telefono && <span role="alert" className="mt-1 block text-sm font-medium text-[#A12622]">{errores.telefono}</span>}
             </label>
           </div>
-          {errorGlobal && <p role="alert" className="mt-4 border border-[#A12622] bg-[#FBEAE9] px-3 py-2 text-sm text-[#A12622]">{errorGlobal}</p>}
           <div className="mt-6 flex flex-wrap gap-3">
             <button type="button" onClick={() => setPaso(1)} className="border border-d-navy px-6 py-3.5 font-medium hover:bg-d-paper">Atrás</button>
             <button type="submit" disabled={enviando} className="bg-d-blue px-7 py-3.5 font-medium text-white hover:bg-d-navy disabled:opacity-60">{enviando ? "Enviando…" : "Enviar solicitud"}</button>

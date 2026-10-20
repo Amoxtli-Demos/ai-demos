@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { CLINICA, HORAS, HORAS_SABADO, SERVICIOS } from "@/lib/clinica";
+import { guardarCita, horasOcupadas } from "@/lib/local-store";
 
 type Step = "libre" | "servicio" | "dia" | "hora" | "nombre" | "telefono" | "confirmar" | "hecho";
 interface Chip { label: string; value: string }
@@ -96,11 +97,7 @@ export default function Chat() {
   const elegirDia = async (iso: string) => {
     setBusy(true);
     setDraft((d) => ({ ...d, dia: iso }));
-    let ocupadas: string[] = [];
-    try {
-      const r = await fetch(`/api/citas?dia=${iso}`);
-      ocupadas = (await r.json()).ocupadas ?? [];
-    } catch {}
+    const ocupadas = horasOcupadas(iso);
     const base = new Date(iso + "T12:00:00").getDay() === 6 ? HORAS_SABADO : HORAS;
     const libres = base.filter((h) => !ocupadas.includes(h));
     if (!libres.length) {
@@ -121,25 +118,24 @@ export default function Chat() {
 
   const confirmar = async () => {
     setBusy(true);
-    try {
-      const r = await fetch("/api/citas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
-      if (r.status === 409) {
-        setStep("dia");
-        await botSay("Ese horario se acaba de ocupar. Elige otro día y te muestro lo que queda.", proximosDias().map((d) => ({ label: d.label, value: d.iso })));
-      } else if (!r.ok) {
-        await botSay("No pude guardar la cita. Intenta otra vez o llámanos al " + CLINICA.telefono + ".", [{ label: "Reintentar", value: "reintentar" }]);
-      } else {
-        setStep("hecho");
-        await botSay(
-          `Listo, ${draft.nombre}. Tu cita de ${draft.servicio?.toLowerCase()} quedó para el ${fmtDia(draft.dia!)} a las ${draft.hora}. Te escribiremos al ${draft.telefono} para recordártela. (Cita de demostración.)`,
-          [{ label: "Hacer otra pregunta", value: "pregunta" }],
-        );
-      }
-    } catch {
-      await botSay("No pude conectarme. Intenta de nuevo en un momento.", [{ label: "Reintentar", value: "reintentar" }]);
-    } finally {
-      setBusy(false);
+    const res = guardarCita({
+      nombre: draft.nombre!,
+      telefono: draft.telefono!,
+      servicio: draft.servicio!,
+      dia: draft.dia!,
+      hora: draft.hora!,
+    });
+    if (res === "ocupado") {
+      setStep("dia");
+      await botSay("Ese horario ya está ocupado. Elige otro día y te muestro lo que queda.", proximosDias().map((d) => ({ label: d.label, value: d.iso })));
+    } else {
+      setStep("hecho");
+      await botSay(
+        `Listo, ${draft.nombre}. Tu cita de ${draft.servicio?.toLowerCase()} quedó para el ${fmtDia(draft.dia!)} a las ${draft.hora}. Te escribiremos al ${draft.telefono} para recordártela. (Cita de demostración.)`,
+        [{ label: "Hacer otra pregunta", value: "pregunta" }],
+      );
     }
+    setBusy(false);
   };
 
   const onChip = async (c: Chip) => {

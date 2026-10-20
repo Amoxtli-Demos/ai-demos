@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import { createLead, listLeads, storageMode } from "@/lib/store";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-
-export async function GET() {
-  try {
-    return NextResponse.json({ leads: await listLeads(), almacenamiento: storageMode() });
-  } catch (e) {
-    return NextResponse.json({ error: "No se pudo leer el panel" }, { status: 500 });
-  }
-}
 
 export async function POST(req: Request) {
   const b = await req.json().catch(() => null);
@@ -27,14 +17,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
   }
 
-  let lead;
-  try {
-    lead = await createLead({ nombre, empresa, email, telefono, servicio, mensaje });
-  } catch {
-    return NextResponse.json({ error: "No se pudo guardar" }, { status: 500 });
-  }
-
-  // Correo al despacho (opcional): sin RESEND_API_KEY la demo sigue funcionando y lo informa.
+  // Esta ruta solo envía el aviso por correo; la solicitud se guarda en el navegador. Correo opcional: sin RESEND_API_KEY la demo sigue funcionando y lo informa.
   let correo: "enviado" | "no_configurado" | "error" = "no_configurado";
   const key = process.env.RESEND_API_KEY;
   const to = process.env.LEADS_NOTIFY_TO;
@@ -68,5 +51,5 @@ ${mensaje ? `<p style="margin:12px 0 0;padding:12px;background:#EEF0F2">${esc(me
     }
   }
 
-  return NextResponse.json({ lead, correo }, { status: 201 });
+  return NextResponse.json({ correo }, { status: 200 });
 }

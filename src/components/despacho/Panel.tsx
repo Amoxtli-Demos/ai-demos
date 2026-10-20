@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ESTADOS } from "@/lib/despacho";
+import { cambiarEstadoLead, listarLeads } from "@/lib/local-store";
 import type { Lead, LeadEstado } from "@/lib/types";
 
 const fmt = (iso: string) => new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
@@ -9,33 +10,19 @@ const ORDEN: LeadEstado[] = ["nuevo", "contacto", "cerrado"];
 
 export default function Panel() {
   const [leads, setLeads] = useState<Lead[] | null>(null);
-  const [modo, setModo] = useState("");
-  const [error, setError] = useState(false);
   const [filtro, setFiltro] = useState<LeadEstado | "todos">("todos");
 
-  const cargar = useCallback(async () => {
-    try {
-      const r = await fetch("/api/leads", { cache: "no-store" });
-      if (!r.ok) throw new Error();
-      const d = await r.json();
-      setLeads(d.leads);
-      setModo(d.almacenamiento);
-      setError(false);
-    } catch {
-      setError(true);
-    }
-  }, []);
+  const cargar = useCallback(() => setLeads(listarLeads()), []);
 
   useEffect(() => {
     cargar();
-    const t = setInterval(cargar, 4000);
+    const t = setInterval(cargar, 2000);
     return () => clearInterval(t);
   }, [cargar]);
 
-  const cambiar = async (id: string, estado: LeadEstado) => {
-    setLeads((p) => p?.map((l) => (l.id === id ? { ...l, estado } : l)) ?? p);
-    const r = await fetch(`/api/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ estado }) });
-    if (!r.ok) cargar();
+  const cambiar = (id: string, estado: LeadEstado) => {
+    cambiarEstadoLead(id, estado);
+    cargar();
   };
 
   const visibles = leads?.filter((l) => filtro === "todos" || l.estado === filtro) ?? [];
@@ -46,7 +33,7 @@ export default function Panel() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-despachoDisplay text-4xl font-semibold">Panel de solicitudes</h1>
-          <p className="mt-2 text-d-slate">Se actualiza solo cada pocos segundos. {modo && <span>Almacenamiento: {modo}.</span>}</p>
+          <p className="mt-2 text-d-slate">Se actualiza solo. Las solicitudes se guardan en este navegador, así que el formulario y el panel deben abrirse en el mismo navegador.</p>
         </div>
         <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap border border-d-navy">
           {(["todos", ...ORDEN] as const).map((e) => (
@@ -58,10 +45,7 @@ export default function Panel() {
       </div>
 
       <div className="mt-8">
-        {error && !leads && (
-          <p role="alert" className="border border-[#A12622] bg-[#FBEAE9] p-4 text-[#A12622]">No se pudo cargar el panel. <button onClick={cargar} className="font-semibold underline">Reintentar</button></p>
-        )}
-        {!error && !leads && <p className="border border-d-rule bg-d-white p-6 text-d-slate" role="status">Cargando solicitudes…</p>}
+        {!leads && <p className="border border-d-rule bg-d-white p-6 text-d-slate" role="status">Cargando solicitudes…</p>}
         {leads && !visibles.length && (
           <div className="border border-d-rule bg-d-white p-10 text-center">
             <p className="font-despachoDisplay text-2xl font-semibold">{leads.length ? "No hay solicitudes con ese estado." : "Aún no hay solicitudes."}</p>
